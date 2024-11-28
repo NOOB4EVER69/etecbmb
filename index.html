@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>End-to-End Encryption</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #121212;
+            color: #f5f5f5;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            margin: 20px;
+            gap: 20px;
+        }
+        .section {
+            padding: 20px;
+            background: #222;
+            border-radius: 10px;
+        }
+        textarea, input, button {
+            display: block;
+            margin: 10px auto;
+            padding: 10px;
+            width: 90%;
+            border: none;
+            border-radius: 5px;
+        }
+        button {
+            background-color: #007bff;
+            color: #fff;
+            cursor: pointer;
+        }
+        canvas {
+            margin: 20px auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>End-to-End Encryption</h1>
+    <div class="container">
+        <!-- Encryption Section -->
+        <div class="section">
+            <h2>Encrypt & Generate QR Code</h2>
+    <textarea id="inputText" placeholder="Enter text..." maxlength="20"></textarea>
+
+<p class="char-count" id="charCount">20 lettes max for now</p>
+
+            <input type="password" id="encryptionKey" placeholder="Enter a secret key">
+            <button id="generateQR">Generate QR Code</button>
+            <canvas id="qrCanvas"></canvas>
+            <button id="downloadQR">Download QR Code</button>
+        </div>
+        <!-- Decryption Section -->
+        <div class="section">
+            <h2>Decrypt QR Code</h2>
+            <input type="file" id="uploadQR">
+            <input type="password" id="decryptionKey" placeholder="Enter the secret key">
+            <button id="decryptQR">Decrypt QR Code</button>
+            <p id="decryptedText"></p>
+        </div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr/dist/jsQR.js"></script>
+    <script>
+        const inputText = document.getElementById('inputText');
+        const qrCanvas = document.getElementById('qrCanvas');
+        const decryptedText = document.getElementById('decryptedText');
+
+        // Morse Code Mapping
+        const morseCodeMap = {
+            '0': '-----', '1': '.----', '2': '..---', '3': '...--', '4': '....-', '5': '.....',
+            '6': '-....', '7': '--...', '8': '---..', '9': '----.',
+            'A': '.-', 'B': '-...', 'C': '-.-.', 'D': '-..', 'E': '.', 'F': '..-.', 'G': '--.',
+            'H': '....', 'I': '..', 'J': '.---', 'K': '-.-', 'L': '.-..', 'M': '--', 'N': '-.',
+            'O': '---', 'P': '.--.', 'Q': '--.-', 'R': '.-.', 'S': '...', 'T': '-', 'U': '..-',
+            'V': '...-', 'W': '.--', 'X': '-..-', 'Y': '-.--', 'Z': '--..',
+            '.': '.-.-.-', ',': '--..--', '?': '..--..', "'": '.----.', '!': '-.-.--', '/': '-..-.',
+            '(': '-.--.', ')': '-.--.-', '&': '.-...', ':': '---...', ';': '-.-.-.', '=': '-...-',
+            '+': '.-.-.', '-': '-....-', '_': '..--.-', '"': '.-..-.', '$': '...-..-', '@': '.--.-.',
+            ' ': '/'
+        };
+
+        function textToMorse(text) {
+            return text.toUpperCase().split('').map(char => morseCodeMap[char] || '').join(' ');
+        }
+
+        function morseToBrainfuck(morse) {
+            return morse.split('').map(char => {
+                switch (char) {
+                    case '.': return '+';
+                    case '-': return '-';
+                    case '/': return '.';
+                    default: return '>';
+                }
+            }).join('');
+        }
+
+        function brainfuckToMorse(brainfuck) {
+            return brainfuck.split('').map(char => {
+                switch (char) {
+                    case '+': return '.';
+                    case '-': return '-';
+                    case '.': return '/';
+                    default: return ' ';
+                }
+            }).join('');
+        }
+
+        function morseToText(morse) {
+            const reverseMap = Object.entries(morseCodeMap).reduce((acc, [key, value]) => {
+                acc[value] = key;
+                return acc;
+            }, {});
+            return morse.split(' ').map(code => reverseMap[code] || '').join('');
+        }
+
+        function generateSalt(length = 16) {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+            return Array.from({ length }, () => chars.charAt(Math.floor(Math.random() * chars.length))).join('');
+        }
+
+        document.getElementById('generateQR').addEventListener('click', () => {
+            const key = document.getElementById('encryptionKey').value;
+            if (!key) {
+                alert('Please enter a secret key!');
+                return;
+            }
+
+            const text = inputText.value;
+            if (!text) {
+                alert('Please enter text to encrypt!');
+                return;
+            }
+
+            const salt = generateSalt();
+            const iv = CryptoJS.lib.WordArray.random(16);
+            const derivedKey = CryptoJS.PBKDF2(key, salt, { keySize: 256 / 32, iterations: 1000 });
+            const encrypted = CryptoJS.AES.encrypt(text, derivedKey, { iv }).toString();
+            const binary = encrypted.split('').map(char => char.charCodeAt(0).toString(2).padStart(8, '0')).join('');
+            const morse = textToMorse(binary);
+            const brainfuck = morseToBrainfuck(morse);
+
+            const qrData = {
+                salt,
+                iv: iv.toString(CryptoJS.enc.Base64),
+                brainfuck
+            };
+
+            QRCode.toCanvas(qrCanvas, JSON.stringify(qrData), (error) => {
+                if (error) console.error(error);
+                else console.log('QR Code generated!');
+            });
+        });
+
+        document.getElementById('downloadQR').addEventListener('click', () => {
+            const canvas = document.getElementById('qrCanvas');
+            const link = document.createElement('a');
+            link.download = 'qr_code.png';
+            link.href = canvas.toDataURL();
+            link.click();
+        });
+
+        document.getElementById('decryptQR').addEventListener('click', () => {
+            const fileInput = document.getElementById('uploadQR');
+            const key = document.getElementById('decryptionKey').value;
+
+            if (!fileInput.files.length || !key) {
+                alert('Please upload a QR code and enter the secret key!');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = () => {
+                const img = new Image();
+                img.src = reader.result;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0);
+                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    const code = jsQR(imageData.data, canvas.width, canvas.height);
+
+                    if (code) {
+                        const qrContent = JSON.parse(code.data);
+                        const salt = qrContent.salt;
+                        const iv = CryptoJS.enc.Base64.parse(qrContent.iv);
+                        const brainfuck = qrContent.brainfuck;
+
+                        const derivedKey = CryptoJS.PBKDF2(key, salt, { keySize: 256 / 32, iterations: 1000 });
+                        const morse = brainfuckToMorse(brainfuck);
+                        const binary = morseToText(morse);
+                        const encryptedText = binary.match(/.{8}/g).map(byte => String.fromCharCode(parseInt(byte, 2))).join('');
+                        const decrypted = CryptoJS.AES.decrypt(encryptedText, derivedKey, { iv }).toString(CryptoJS.enc.Utf8);
+
+                        decryptedText.innerText = `Decrypted Text: ${decrypted}`;
+                    } else {
+                        alert('QR Code not detected!');
+                    }
+                };
+            };
+            reader.readAsDataURL(fileInput.files[0]);
+        });
+
+        
+    </script>
+</body>
+</html>
